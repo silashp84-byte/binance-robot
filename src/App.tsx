@@ -1,24 +1,51 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Square, TrendingUp, Target, Wallet, History, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Play, Square, TrendingUp, Target, Wallet, History, AlertCircle, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Toaster, toast } from 'sonner';
 
 interface BotStatus {
   botRunning: boolean;
+  simulationMode: boolean;
   currentCapital: number;
   initialCapital: number;
   targetGoal: number;
   logs: string[];
   profit: number;
+  realPrice: number;
+  realBalance: number;
+  hasApiKeys: boolean;
 }
 
 export default function App() {
   const [status, setStatus] = useState<BotStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastLogRef = useRef<string | null>(null);
+
+  const playAlertSound = () => {
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    audio.play().catch(e => console.log('Audio play failed', e));
+  };
 
   const fetchStatus = async () => {
     try {
       const res = await fetch('/api/status');
       const data = await res.json();
+      
+      // Check for new alerts in logs
+      if (data.logs.length > 0) {
+        const latestLog = data.logs[0];
+        if (latestLog !== lastLogRef.current) {
+          if (latestLog.includes('ALERT')) {
+            toast.success(latestLog, {
+              icon: '🎯',
+              duration: 5000,
+            });
+            playAlertSound();
+          }
+          lastLogRef.current = latestLog;
+        }
+      }
+      
       setStatus(data);
     } catch (err) {
       console.error('Failed to fetch status', err);
@@ -43,6 +70,13 @@ export default function App() {
     fetchStatus();
   };
 
+  const handleCheckup = () => {
+    toast.info('Check-up do Sistema: Robô Operacional', {
+      description: `Capital: $${status?.currentCapital.toFixed(2)} | Status: ${status?.botRunning ? 'Rodando' : 'Parado'}`,
+      icon: <ShieldCheck className="w-5 h-5 text-blue-400" />
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0b0e11] text-white flex items-center justify-center">
@@ -56,6 +90,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0b0e11] text-[#eaecef] font-sans selection:bg-[#f3ba2f] selection:text-black">
+      <Toaster position="top-right" theme="dark" richColors />
       {/* Header */}
       <header className="border-b border-[#2b2f36] bg-[#181a20] p-4 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
@@ -66,6 +101,19 @@ export default function App() {
             <h1 className="text-xl font-bold tracking-tight">Binance Alavancagem Bot</h1>
           </div>
           <div className="flex items-center gap-4">
+            {status?.realPrice && (
+              <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-[#2b2f36] rounded-full text-sm">
+                <span className="text-[#848e9c]">BTC:</span>
+                <span className="text-green-400 font-mono font-bold">${status.realPrice.toLocaleString()}</span>
+              </div>
+            )}
+            <button 
+              onClick={handleCheckup}
+              className="p-2 hover:bg-[#2b2f36] rounded-full transition-colors text-[#848e9c]"
+              title="Check-up do Sistema"
+            >
+              <ShieldCheck className="w-5 h-5" />
+            </button>
             <div className="flex items-center gap-2 px-3 py-1 bg-[#2b2f36] rounded-full text-sm">
               <div className={`w-2 h-2 rounded-full ${status?.botRunning ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
               {status?.botRunning ? 'Executando' : 'Parado'}
@@ -77,20 +125,31 @@ export default function App() {
       <main className="max-w-6xl mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Stats */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard 
-              icon={<Wallet className="text-[#f3ba2f]" />} 
-              label="Capital Atual" 
-              value={`$${status?.currentCapital.toFixed(2)}`} 
-              subValue="Banca em tempo real"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {status?.simulationMode ? (
+              <StatCard 
+                icon={<Wallet className="text-[#f3ba2f]" />} 
+                label="Capital Simulado" 
+                value={`$${status?.currentCapital.toFixed(2)}`} 
+                subValue="Banca da Simulação"
+              />
+            ) : (
+              <StatCard 
+                icon={<Wallet className="text-blue-400" />} 
+                label="Saldo Real (USDT)" 
+                value={`$${status?.realBalance.toFixed(2)}`} 
+                subValue={status?.hasApiKeys ? "Binance Spot" : "API não configurada"}
+              />
+            )}
+            
             <StatCard 
               icon={<TrendingUp className={profitColor} />} 
-              label="Lucro Total" 
+              label={status?.simulationMode ? "Lucro Simulado" : "Lucro Real"} 
               value={`$${status?.profit.toFixed(2)}`} 
-              subValue="Desde o início"
+              subValue="Performance"
               valueClass={profitColor}
             />
+            
             <StatCard 
               icon={<Target className="text-blue-400" />} 
               label="Meta" 
@@ -99,23 +158,25 @@ export default function App() {
             />
           </div>
 
-          {/* Progress Bar */}
-          <div className="bg-[#181a20] p-6 rounded-2xl border border-[#2b2f36]">
-            <div className="flex justify-between items-end mb-4">
-              <div>
-                <h3 className="text-sm text-[#848e9c] uppercase tracking-wider font-semibold">Progresso da Meta</h3>
-                <p className="text-2xl font-bold mt-1">{progress.toFixed(1)}% concluído</p>
+          {/* Progress Bar (Only for simulation or if keys exist) */}
+          {(status?.simulationMode || status?.hasApiKeys) && (
+            <div className="bg-[#181a20] p-6 rounded-2xl border border-[#2b2f36]">
+              <div className="flex justify-between items-end mb-4">
+                <div>
+                  <h3 className="text-sm text-[#848e9c] uppercase tracking-wider font-semibold">Progresso da Meta</h3>
+                  <p className="text-2xl font-bold mt-1">{progress.toFixed(1)}% concluído</p>
+                </div>
+                <p className="text-[#848e9c] text-sm">Faltam ${status ? (status.targetGoal - status.currentCapital).toFixed(2) : 0}</p>
               </div>
-              <p className="text-[#848e9c] text-sm">Faltam ${status ? (status.targetGoal - status.currentCapital).toFixed(2) : 0}</p>
+              <div className="h-4 bg-[#2b2f36] rounded-full overflow-hidden">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(progress, 100)}%` }}
+                  className="h-full bg-gradient-to-r from-[#f3ba2f] to-[#f0b90b]"
+                />
+              </div>
             </div>
-            <div className="h-4 bg-[#2b2f36] rounded-full overflow-hidden">
-              <motion.div 
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.min(progress, 100)}%` }}
-                className="h-full bg-gradient-to-r from-[#f3ba2f] to-[#f0b90b]"
-              />
-            </div>
-          </div>
+          )}
 
           {/* Controls */}
           <div className="flex gap-4">
