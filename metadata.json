@@ -1,0 +1,5 @@
+{
+  "name": "Binance Trading Bot",
+  "description": "A day trading bot for Binance with risk management and a $1000 goal.",
+  "requestFramePermissions": []
+}
