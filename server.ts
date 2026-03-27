@@ -23,9 +23,9 @@ const client = BinanceFactory({
 
 // Simulation State
 let botRunning = false;
-let simulationMode = false; // Disabled as requested
-let currentCapital = 60;
-let initialCapital = 60;
+let simulationMode = false; 
+let currentCapital = 0;
+let initialCapital = 0;
 let targetGoal = 1000;
 let lastAlertProfit = 0;
 let logs: string[] = [];
@@ -58,63 +58,48 @@ const tradingLoop = async () => {
         const accountInfo = await client.accountInfo();
         const usdtBalance = accountInfo.balances.find(b => b.asset === 'USDT');
         realBalance = usdtBalance ? parseFloat(usdtBalance.free) : 0;
+        currentCapital = realBalance;
+
+        // If it's the first run after start, set initial capital
+        if (initialCapital === 0 && botRunning) {
+          initialCapital = realBalance;
+          addLog(`💰 Banca Inicial Detectada: $${initialCapital.toFixed(2)}`);
+        }
       } catch (e) {
         console.error("Error fetching real balance", e);
       }
     }
 
-    addLog(`🔍 Analisando Ativo: ${asset} | Preço Real: $${realPrice.toFixed(2)}`);
+    addLog(`🔍 Analisando Ativo: ${asset} | Preço: $${realPrice.toFixed(2)}`);
     
-    if (simulationMode) {
-      addLog(`⚡ Tentativa de Entrada: Compra em ${asset} (Risco 1% Simulado)`);
-      // Risk Management (Simulated)
-      const amountToRisk = currentCapital * 0.01;
-      const takeProfitAmount = amountToRisk * 2;
+    if (hasApiKeys) {
+      const amountToRisk = realBalance * 0.01;
+      addLog(`🛡️ MONITORANDO: Buscando entrada em ${asset} | Risco: $${amountToRisk.toFixed(2)} (1%)`);
       
-      const winProbability = 0.45; 
-      const isWin = Math.random() < winProbability;
+      // Calculate profit since start
+      const totalProfit = realBalance - initialCapital;
+      
+      // Check for $20 profit alert
+      if (totalProfit >= lastAlertProfit + 20) {
+        lastAlertProfit = Math.floor(totalProfit / 20) * 20;
+        addLog(`🎯 ALERTA: Lucro na conta real atingiu +$${totalProfit.toFixed(2)}!`);
+      }
 
-      if (isWin) {
-        currentCapital += takeProfitAmount;
-        addLog(`✅ Trade GANHO em ${asset}: +$${takeProfitAmount.toFixed(2)}. Saldo Simulado: $${currentCapital.toFixed(2)}`);
-      } else {
-        currentCapital -= amountToRisk;
-        addLog(`❌ Trade PERDIDO em ${asset}: -$${amountToRisk.toFixed(2)}. Saldo Simulado: $${currentCapital.toFixed(2)}`);
+      if (realBalance >= targetGoal) {
+        addLog(`🚀 META DE $1000 ALCANÇADA NA CONTA REAL!`);
+        botRunning = false;
       }
     } else {
-      if (hasApiKeys) {
-        const amountToRisk = realBalance * 0.01;
-        addLog(`🛡️ MODO REAL: Monitorando entrada em ${asset} com risco de $${amountToRisk.toFixed(2)} (1% da banca real)`);
-        // In real mode, we just monitor and log analysis without fake balance updates
-        currentCapital = realBalance; 
-      } else {
-        addLog(`⚠️ AVISO: Simulação desativada, mas chaves de API não configuradas para Modo Real.`);
-      }
-    }
-
-    // Check for $10 profit alert (reduced from $20 for better visibility)
-    const totalProfit = currentCapital - initialCapital;
-    if (totalProfit >= lastAlertProfit + 10) {
-      lastAlertProfit = Math.floor(totalProfit / 10) * 10;
-      addLog(`🎯 ALERT: Lucro atingiu $${totalProfit.toFixed(2)}!`);
-    }
-
-    if (currentCapital >= targetGoal) {
-      addLog(`🚀 META ALCANÇADA! Capital Final: $${currentCapital.toFixed(2)}`);
-      botRunning = false;
-    }
-
-    if (currentCapital <= 0) {
-      addLog(`💀 Conta Quebrada. Parando o robô.`);
+      addLog(`⚠️ ERRO: Chaves de API não configuradas. Operação real impossível.`);
       botRunning = false;
     }
 
   } catch (error) {
-    addLog(`Erro no loop de simulação: ${error instanceof Error ? error.message : String(error)}`);
+    addLog(`Erro no loop de operação: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   if (botRunning) {
-    setTimeout(tradingLoop, 3000); // Faster simulation (3 seconds)
+    setTimeout(tradingLoop, 3000); // 3 seconds interval
   }
 };
 
@@ -126,7 +111,7 @@ app.get("/api/status", (req, res) => {
     initialCapital,
     targetGoal,
     logs,
-    profit: currentCapital - initialCapital,
+    profit: initialCapital === 0 ? 0 : currentCapital - initialCapital,
     realPrice,
     realBalance,
     hasApiKeys
@@ -136,7 +121,9 @@ app.get("/api/status", (req, res) => {
 app.post("/api/start", (req, res) => {
   if (!botRunning) {
     botRunning = true;
-    addLog("Bot Started. Goal: $1000. Risk: 1% per trade. RR: 2:1.");
+    initialCapital = 0; // Will be set on first loop iteration from real balance
+    lastAlertProfit = 0;
+    addLog("Bot Iniciado na Conta Real. Meta: $1000. Risco: 1% por operação.");
     tradingLoop();
   }
   res.json({ success: true });
@@ -144,10 +131,10 @@ app.post("/api/start", (req, res) => {
 
 app.post("/api/stop", (req, res) => {
   botRunning = false;
-  currentCapital = 60; // Reset as requested
-  initialCapital = 60;
+  initialCapital = 0;
+  currentCapital = 0;
   lastAlertProfit = 0;
-  addLog("Bot Stopped. Capital reset to $60.");
+  addLog("Bot Parado. Contagem de lucro reiniciada.");
   res.json({ success: true });
 });
 

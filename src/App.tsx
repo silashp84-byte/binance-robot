@@ -85,7 +85,7 @@ export default function App() {
     );
   }
 
-  const progress = status ? (status.currentCapital / status.targetGoal) * 100 : 0;
+  const progress = status ? (Math.max(0, status.profit) / status.targetGoal) * 100 : 0;
   const profitColor = status && status.profit >= 0 ? 'text-green-400' : 'text-red-400';
 
   return (
@@ -125,48 +125,32 @@ export default function App() {
       <main className="max-w-6xl mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Stats */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {status?.simulationMode ? (
-              <StatCard 
-                icon={<Wallet className="text-[#f3ba2f]" />} 
-                label="Capital Simulado" 
-                value={`$${status?.currentCapital.toFixed(2)}`} 
-                subValue="Banca da Simulação"
-              />
-            ) : (
-              <StatCard 
-                icon={<Wallet className="text-blue-400" />} 
-                label="Saldo Real (USDT)" 
-                value={`$${status?.realBalance.toFixed(2)}`} 
-                subValue={status?.hasApiKeys ? "Binance Spot" : "API não configurada"}
-              />
-            )}
-            
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <StatCard 
               icon={<TrendingUp className={profitColor} />} 
-              label={status?.simulationMode ? "Lucro Simulado" : "Lucro Real"} 
+              label="Lucro (Alavancagem)" 
               value={`$${status?.profit.toFixed(2)}`} 
-              subValue="Performance"
+              subValue="Performance Real"
               valueClass={profitColor}
             />
             
             <StatCard 
               icon={<Target className="text-blue-400" />} 
-              label="Meta" 
+              label="Meta Final" 
               value={`$${status?.targetGoal}`} 
-              subValue="Objetivo Final"
+              subValue="Objetivo da Conta"
             />
           </div>
 
-          {/* Progress Bar (Only for simulation or if keys exist) */}
-          {(status?.simulationMode || status?.hasApiKeys) && (
+          {/* Progress Bar */}
+          {status?.hasApiKeys && (
             <div className="bg-[#181a20] p-6 rounded-2xl border border-[#2b2f36]">
               <div className="flex justify-between items-end mb-4">
                 <div>
-                  <h3 className="text-sm text-[#848e9c] uppercase tracking-wider font-semibold">Progresso da Meta</h3>
+                  <h3 className="text-sm text-[#848e9c] uppercase tracking-wider font-semibold">Progresso da Alavancagem</h3>
                   <p className="text-2xl font-bold mt-1">{progress.toFixed(1)}% concluído</p>
                 </div>
-                <p className="text-[#848e9c] text-sm">Faltam ${status ? (status.targetGoal - status.currentCapital).toFixed(2) : 0}</p>
+                <p className="text-[#848e9c] text-sm">Faltam ${status ? Math.max(0, status.targetGoal - status.currentCapital).toFixed(2) : 0} para a meta</p>
               </div>
               <div className="h-4 bg-[#2b2f36] rounded-full overflow-hidden">
                 <motion.div 
@@ -205,8 +189,8 @@ export default function App() {
             <div>
               <h4 className="font-bold mb-1">Configuração de Risco</h4>
               <p className="text-sm text-[#848e9c] leading-relaxed">
-                O robô utiliza gerenciamento 2x1, arriscando 1% do capital atual por operação. 
-                Alertas automáticos são disparados a cada $20 de lucro acumulado.
+                O robô monitora a conta real Binance, arriscando 1% do capital por operação. 
+                Alertas automáticos são disparados a cada $20 de lucro acumulado na meta de $1000.
               </p>
             </div>
           </div>
